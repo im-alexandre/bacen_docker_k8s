@@ -1,7 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: bacen-lab
-  labels:
-    curso: bacen
-    bloco: docker-kubernetes

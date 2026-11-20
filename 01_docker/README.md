@@ -3,9 +3,10 @@
 Na [preparação comum](../README.md), Terraform provisiona a EC2
 `docker` e Ansible instala o Engine, os plugins e publica os arquivos.
 Abra uma sessão SSH na máquina Docker e execute os comandos abaixo em Bash.
-Use `sudo` para acessar o daemon. Para os comandos HTTP, use outro terminal
-Ubuntu no WSL com o túnel abaixo. Substitua `IP_DOCKER` pelo IPv4 público
-do output `maquinas`. Deixe o túnel aberto durante a demonstração.
+Use `sudo` para acessar o daemon. Abra o túnel abaixo em um terminal Bash
+do Ubuntu local. Substitua `IP_DOCKER` pelo IPv4 público do output `maquinas`.
+Deixe o túnel aberto durante a demonstração e execute os comandos HTTP
+em outro terminal do Ubuntu local.
 
 ```bash
 ssh -i ~/.ssh/bacen-dk -N -o ExitOnForwardFailure=yes \
@@ -37,7 +38,7 @@ sudo docker port bacen-ciclo
 sudo docker inspect bacen-ciclo --format '{{.Id}} {{.Config.Image}} {{.State.Status}}'
 ```
 
-Em outro terminal WSL, com o túnel ativo, execute
+No terminal do Ubuntu local, com o túnel ativo, execute
 `curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8085/`.
 Espere HTTP 200. Volte à EC2 para observar o processo.
 
@@ -81,7 +82,7 @@ sudo docker compose -p bacen-dk ps
 sudo docker compose -p bacen-dk exec -T proxy wget -qO- http://app:8080/info
 ```
 
-No terminal WSL com acesso ao túnel, leia a versão e incremente o contador.
+No Ubuntu local, com o túnel ativo, leia a versão e incremente o contador.
 Anote a resposta do `GET /counter`.
 
 ```bash

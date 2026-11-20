@@ -1,9 +1,4 @@
-"""Aplicação didática, sem dependências externas e sem serviço de IA.
-
-O contador persiste no Docker Compose por meio de um volume nomeado.
-No Kubernetes ele é local a cada Pod (emptyDir), sem estado compartilhado.
-Os arquivos de falha em /tmp são usados somente na demonstração de probes.
-"""
+"""Aplicação do Docker Compose com contador SQLite em um volume nomeado."""
 from contextlib import closing
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -41,14 +36,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlsplit(self.path).path
-        if path in ("/livez", "/readyz"):
-            marker = "force-unhealthy" if path == "/livez" else "force-unready"
-            healthy = not (Path("/tmp") / marker).exists()
-            self.send(200 if healthy else 503, {"ok": healthy, "probe": path})
+        if path == "/readyz":
+            self.send(200, {"ok": True, "probe": path})
         elif path == "/info":
             self.send(200, {"versao": VERSION, "mensagem": MESSAGE,
-                            "hostname": socket.gethostname(),
-                            "segredo_configurado": bool(os.getenv("API_TOKEN"))})
+                            "hostname": socket.gethostname()})
         elif path == "/counter":
             self.send(200, {"contador": counter()})
         elif path == "/":

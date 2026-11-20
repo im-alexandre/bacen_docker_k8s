@@ -86,7 +86,7 @@
         name: k3s-agent
         state: started
 
-- name: Validar os nós e publicar os manifestos
+- name: Validar os nós e publicar o manifesto
   hosts: k3s_server
   gather_facts: false
   tasks:
@@ -99,8 +99,8 @@
       delay: 5
       changed_when: false
 
-    - name: Publicar manifestos para a demonstração
+    - name: Publicar o manifesto para a demonstração
       ansible.builtin.copy:
-        src: ../02_kubernetes/
-        dest: /home/ubuntu/bacen-dk/
-        mode: preserve
+        src: ../02_kubernetes/nginx.yaml
+        dest: /home/ubuntu/nginx.yaml
+        mode: "0644"
