@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bacen-config
+  namespace: bacen-lab
+data:
+  APP_MESSAGE: "Kubernetes: configuração separada da imagem"

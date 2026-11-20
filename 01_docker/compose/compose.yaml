@@ -1,0 +1,34 @@
+services:
+  app:
+    build:
+      context: ../../app
+      args:
+        APP_VERSION: v1
+    image: bacen-lab-web:v1
+    environment:
+      APP_MESSAGE: "Docker Compose: aplicação e proxy"
+    volumes:
+      - dados:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/readyz', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+  proxy:
+    image: nginx:stable-alpine
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8086:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/readyz"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+volumes:
+  dados:

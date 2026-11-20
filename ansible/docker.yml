@@ -1,0 +1,72 @@
+---
+- name: Preparar Docker Engine e Compose na EC2
+  hosts: docker_hosts
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Aguardar SSH e a preparação inicial do Ubuntu
+      ansible.builtin.wait_for_connection:
+        timeout: 180
+
+    - name: Aguardar o cloud-init
+      ansible.builtin.command: cloud-init status --wait
+      changed_when: false
+
+    - name: Instalar utilitários
+      ansible.builtin.apt:
+        name: [ca-certificates, curl, python3-debian]
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Criar diretório de chaves de repositório
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Obter chave do repositório oficial do Docker
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Configurar repositório Docker para Ubuntu 24.04 amd64
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: [deb]
+        uris: [https://download.docker.com/linux/ubuntu]
+        suites: [noble]
+        components: [stable]
+        architectures: [amd64]
+        signed_by: /etc/apt/keyrings/docker.asc
+      register: repo_docker
+
+    - name: Instalar Engine, Buildx e Compose
+      ansible.builtin.apt:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+        update_cache: true
+        cache_valid_time: "{{ 0 if repo_docker.changed else 3600 }}"
+
+    - name: Ativar o serviço Docker
+      ansible.builtin.systemd_service:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Criar pasta do laboratório
+      ansible.builtin.file:
+        path: /home/ubuntu/bacen-dk
+        owner: ubuntu
+        group: ubuntu
+        state: directory
+        mode: "0755"
+
+    - name: Publicar código da aplicação e arquivos Compose
+      become: false
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: /home/ubuntu/bacen-dk/
+        mode: preserve
+      loop:
+        - ../app
+        - ../01_docker

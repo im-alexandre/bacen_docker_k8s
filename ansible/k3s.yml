@@ -1,0 +1,106 @@
+---
+- name: Preparar os nós Kubernetes
+  hosts: k3s
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Aguardar SSH
+      ansible.builtin.wait_for_connection:
+        timeout: 180
+
+    - name: Aguardar o cloud-init
+      ansible.builtin.command: cloud-init status --wait
+      changed_when: false
+
+    - name: Instalar utilitários
+      ansible.builtin.apt:
+        name: [ca-certificates, curl]
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Baixar o instalador oficial
+      ansible.builtin.get_url:
+        url: https://get.k3s.io
+        dest: /root/install-k3s.sh
+        mode: "0700"
+
+- name: Instalar o plano de controle
+  hosts: k3s_server
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Instalar K3s Server
+      ansible.builtin.command:
+        cmd: sh /root/install-k3s.sh
+        creates: /etc/systemd/system/k3s.service
+      environment:
+        INSTALL_K3S_EXEC: >-
+          server --node-name {{ inventory_hostname }} --node-ip {{ k3s_ip }}
+          --disable traefik --disable servicelb
+        INSTALL_K3S_VERSION: "{{ k3s_version | default('') }}"
+
+    - name: Ativar o servidor
+      ansible.builtin.systemd_service:
+        name: k3s
+        state: started
+
+    - name: Aguardar a API do cluster
+      ansible.builtin.command: k3s kubectl get --raw=/readyz
+      register: api
+      until: api.rc == 0
+      retries: 36
+      delay: 5
+      changed_when: false
+
+    - name: Obter a versão exata do servidor para o agente
+      ansible.builtin.command: k3s --version
+      register: versao_servidor
+      changed_when: false
+
+    - name: Ler token de registro do agente
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/k3s/server/agent-token
+      register: token_agente
+      no_log: true
+
+- name: Ingressar o worker pelo IP privado
+  hosts: k3s_agent
+  become: true
+  gather_facts: false
+  vars:
+    servidor: "{{ hostvars[groups['k3s_server'][0]] }}"
+  tasks:
+    - name: Instalar K3s Agent
+      ansible.builtin.command:
+        cmd: sh /root/install-k3s.sh
+        creates: /etc/systemd/system/k3s-agent.service
+      environment:
+        INSTALL_K3S_EXEC: "agent --node-name {{ inventory_hostname }} --node-ip {{ k3s_ip }}"
+        INSTALL_K3S_VERSION: "{{ servidor.versao_servidor.stdout_lines[0].split()[2] }}"
+        K3S_URL: "https://{{ servidor.k3s_ip }}:6443"
+        K3S_TOKEN: "{{ servidor.token_agente.content | b64decode | trim }}"
+      no_log: true
+
+    - name: Ativar o agente
+      ansible.builtin.systemd_service:
+        name: k3s-agent
+        state: started
+
+- name: Validar os nós e publicar os manifestos
+  hosts: k3s_server
+  gather_facts: false
+  tasks:
+    - name: Aguardar registro e prontidão do worker
+      become: true
+      ansible.builtin.command: "k3s kubectl wait --for=condition=Ready node/{{ groups['k3s_agent'][0] }} --timeout=10s"
+      register: worker
+      until: worker.rc == 0
+      retries: 18
+      delay: 5
+      changed_when: false
+
+    - name: Publicar manifestos para a demonstração
+      ansible.builtin.copy:
+        src: ../02_kubernetes/
+        dest: /home/ubuntu/bacen-dk/
+        mode: preserve

@@ -1,0 +1,50 @@
+---
+- name: Construir as duas versões na máquina Docker
+  hosts: docker_hosts
+  gather_facts: false
+  tasks:
+    - name: Construir a imagem para cada versão
+      become: true
+      ansible.builtin.command: >-
+        docker build --build-arg APP_VERSION={{ item }}
+        --tag bacen-lab-web:{{ item }} /home/ubuntu/bacen-dk/app
+      loop: [v1, v2]
+
+    - name: Exportar as imagens para o instrutor
+      become: true
+      ansible.builtin.command: >-
+        docker image save -o /home/ubuntu/bacen-dk/imagens.tar
+        bacen-lab-web:v1 bacen-lab-web:v2
+
+    - name: Permitir leitura do arquivo pelo usuário SSH
+      become: true
+      ansible.builtin.file:
+        path: /home/ubuntu/bacen-dk/imagens.tar
+        owner: ubuntu
+        group: ubuntu
+        mode: "0600"
+
+    - name: Baixar o arquivo para repassar aos nós
+      ansible.builtin.fetch:
+        src: /home/ubuntu/bacen-dk/imagens.tar
+        dest: "{{ playbook_dir }}/../.execucao/imagens.tar"
+        flat: true
+
+- name: Importar as imagens para o containerd do K3s
+  hosts: k3s
+  gather_facts: false
+  tasks:
+    - name: Enviar o arquivo ao nó
+      ansible.builtin.copy:
+        src: ../.execucao/imagens.tar
+        dest: /home/ubuntu/bacen-dk-imagens.tar
+        mode: "0600"
+
+    - name: Importar as duas tags
+      become: true
+      ansible.builtin.command: k3s ctr images import /home/ubuntu/bacen-dk-imagens.tar
+
+    - name: Remover o arquivo de transferência no nó
+      ansible.builtin.file:
+        path: /home/ubuntu/bacen-dk-imagens.tar
+        state: absent
