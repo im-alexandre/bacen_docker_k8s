@@ -1,121 +1,79 @@
 # Prática de Docker e Compose na EC2
 
-Na [preparação comum](../README.md), Terraform provisiona a EC2
-`docker` e Ansible instala o Engine, os plugins e publica os arquivos.
-Abra uma sessão SSH na máquina Docker e execute os comandos abaixo em Bash.
-Use `sudo` para acessar o daemon. Abra o túnel abaixo em um terminal Bash
-do Ubuntu local. Substitua `IP_DOCKER` pelo IPv4 público do output `maquinas`.
-Deixe o túnel aberto durante a demonstração e execute os comandos HTTP
-em outro terminal do Ubuntu local.
+Use a EC2 `docker` já [preparada com Terraform e Ansible](../README.md).
+No Ubuntu local, substitua `IP_PUBLICO_DOCKER` pelo IP público da EC2.
+Depois de entrar, rode também os testes com `curl` na própria EC2.
 
 ```bash
-ssh -i ~/.ssh/bacen-dk -N -o ExitOnForwardFailure=yes \
-  -L 127.0.0.1:8085:127.0.0.1:8085 \
-  -L 127.0.0.1:8086:127.0.0.1:8086 ubuntu@IP_DOCKER
-```
-
-Antes da tomada, confira as portas locais e preaqueça as imagens. Leia o
-[Dockerfile](../app/Dockerfile) e compare a construção da imagem com a
-execução de um contêiner.
-
-```bash
-cd ~/bacen-dk
-sudo docker version
-sudo docker compose version
-sudo docker pull nginx:stable-alpine
-sudo docker compose -p bacen-dk -f 01_docker/compose/compose.yaml config --quiet
+ssh -i ~/.ssh/bacen-dk ubuntu@IP_PUBLICO_DOCKER
 ```
 
 ## 1. Ciclo de vida de um contêiner
 
-Confira se o nome `bacen-ciclo` está livre. Rode o NGINX e leia o
-mapeamento de portas, o estado e os logs.
+### Subir e testar
+
+**O que fazer** — Na Aula 37, suba o Nginx e mostre o HTTP 200.
+Se o Nginx ainda estiver iniciando, repita o `curl`.
 
 ```bash
-sudo docker ps -a --filter 'name=^/bacen-ciclo$'
-sudo docker run --pull=never -d --name bacen-ciclo -p 127.0.0.1:8085:80 nginx:stable-alpine
-sudo docker port bacen-ciclo
-sudo docker inspect bacen-ciclo --format '{{.Id}} {{.Config.Image}} {{.State.Status}}'
+sudo docker run -d --name bacen-ciclo -p 127.0.0.1:8085:80 nginx:stable-alpine
+curl -I http://127.0.0.1:8085/
 ```
 
-No terminal do Ubuntu local, com o túnel ativo, execute
-`curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8085/`.
-Espere HTTP 200. Volte à EC2 para observar o processo.
+**O que falar** — “O Docker cria um contêiner a partir da imagem do
+Nginx. A porta 8085 da EC2 encaminha a requisição para a porta 80 do
+contêiner.”
+
+### Parar, iniciar e remover
+
+**O que fazer** — Observe os logs, pare o contêiner e compare o ID
+exibido antes e depois de iniciar novamente. Por fim, remova o contêiner.
 
 ```bash
-sudo docker logs --tail 20 bacen-ciclo
-sudo docker stats --no-stream bacen-ciclo
-sudo docker exec bacen-ciclo nginx -v
-
-id_antes=$(sudo docker inspect bacen-ciclo --format '{{.Id}}')
+sudo docker logs --tail 5 bacen-ciclo
 sudo docker stop bacen-ciclo
-sudo docker ps -a --filter 'name=^/bacen-ciclo$'
+sudo docker ps -a --filter name=bacen-ciclo
 sudo docker start bacen-ciclo
-id_depois=$(sudo docker inspect bacen-ciclo --format '{{.Id}}')
-test "$id_antes" = "$id_depois" && echo "Mesmo contêiner"
+sudo docker ps --filter name=bacen-ciclo
+sudo docker rm -f bacen-ciclo
 ```
 
-Repita a consulta HTTP. Para encerrar esta parte, pare e remova somente
-o contêiner da prática. Compare a lista de contêineres com a de imagens.
-
-```bash
-sudo docker stop bacen-ciclo
-sudo docker rm bacen-ciclo
-sudo docker ps -a --filter 'name=^/bacen-ciclo$'
-sudo docker image ls nginx:stable-alpine
-```
+**O que falar** — “Parar interrompe o Nginx. Iniciar usa o mesmo
+contêiner, com o mesmo ID. Remover apaga esse contêiner. A imagem
+continua disponível para criar outros.”
 
 ## 2. Subir a aplicação com Compose
 
-Na EC2, entre em `~/bacen-dk/01_docker/compose`. Leia o
-[compose.yaml](compose/compose.yaml). Siga o caminho da requisição
-HTTP do túnel ao proxy e do proxy ao serviço `app`, nome resolvido
-na rede do projeto. O SQLite usa um volume nomeado.
+### Iniciar os serviços e gravar um valor
+
+**O que fazer** — Na Aula 33, abra o [compose.yaml](compose/compose.yaml)
+e aponte os serviços `app` e `proxy` e o volume `dados`. Suba os
+serviços, incremente o contador e anote o valor retornado.
 
 ```bash
 cd ~/bacen-dk/01_docker/compose
-sudo docker compose -p bacen-dk config --quiet
-sudo docker compose -p bacen-dk ps --all
-sudo docker compose -p bacen-dk build
-sudo docker compose -p bacen-dk up -d --wait --wait-timeout 90
+sudo docker compose -p bacen-dk up -d --build --wait
 sudo docker compose -p bacen-dk ps
-sudo docker compose -p bacen-dk exec -T proxy wget -qO- http://app:8080/info
-```
-
-No Ubuntu local, com o túnel ativo, leia a versão e incremente o contador.
-Anote a resposta do `GET /counter`.
-
-```bash
-curl -fsS http://127.0.0.1:8086/info
 curl -fsS -X POST http://127.0.0.1:8086/counter
-curl -fsS http://127.0.0.1:8086/counter
 ```
 
-Na EC2, recrie os serviços. O primeiro `down` preserva o volume.
+**O que falar** — “O Compose sobe a aplicação e o proxy juntos. A
+requisição entra pela porta 8086 no proxy, que encaminha para o serviço
+`app`. O contador é gravado no volume `dados`.”
+
+### Recriar os serviços e conferir o volume
+
+**O que fazer** — Remova e recrie os contêineres. Consulte o contador
+com GET e mostre que o valor é o mesmo. Depois remova o projeto e o
+volume da prática.
 
 ```bash
 sudo docker compose -p bacen-dk down
-sudo docker volume inspect bacen-dk_dados --format '{{.Name}}'
-sudo docker compose -p bacen-dk up -d --wait --wait-timeout 90
-sudo docker compose -p bacen-dk logs --tail 15
-```
-
-Repita o `GET /counter`. Espera-se o mesmo valor, pois o volume reaparece
-na montagem do novo contêiner. Compare o healthcheck HTTP com
-`depends_on: condition: service_healthy` na partida do proxy.
-
-## 3. Encerrar esta parte
-
-Na EC2, remova os serviços e os dados gerados da prática. Feche o
-túnel com Ctrl+C no terminal que o executa.
-
-```bash
+sudo docker compose -p bacen-dk up -d --wait
+curl -fsS http://127.0.0.1:8086/counter
 sudo docker compose -p bacen-dk down --volumes
-sudo docker compose -p bacen-dk ps --all
-sudo docker volume ls --filter label=com.docker.compose.project=bacen-dk
 ```
 
-## Sequência sugerida para a tomada
-
-- **Aula 33** — YAML, build, serviços saudáveis, acesso via proxy e contador após a recriação.
-- **Aula 37** — imagem e execução, HTTP, logs e métricas, mesmo ID após reiniciar e remoção.
+**O que falar** — “O primeiro `down` removeu os contêineres e preservou
+o volume. Quando subi os serviços de novo, a aplicação leu o mesmo
+contador. No fim, `down --volumes` também remove os dados da prática.”

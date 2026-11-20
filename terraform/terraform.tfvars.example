@@ -1,4 +1,0 @@
-aws_region          = "sa-east-1"
-expected_account_id = "000000000000"
-ami_id              = "ami-00000000000000000"
-instructor_cidr     = "192.0.2.10/32"

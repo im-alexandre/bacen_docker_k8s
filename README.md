@@ -15,8 +15,8 @@ Kubernetes nos terminais das VMs.
 
 As duas práticas compartilham o state e o pacote. As VMs recebem IPv4 público
 para SSH e downloads. Só a porta 22 aceita conexões do IPv4 do instrutor.
-A API e o tráfego entre nós do K3s usam a rede privada. O teste HTTP do
-Kubernetes é feito na própria EC2 do K3s. O laboratório usa uma VPC própria e pode gerar cobranças
+A API e o tráfego entre nós do K3s usam a rede privada. Os testes HTTP
+são feitos nas próprias EC2. O laboratório usa uma VPC própria e pode gerar cobranças
 por EC2, EBS, IPv4 público e tráfego.
 
 ## Preparar antes da gravação
